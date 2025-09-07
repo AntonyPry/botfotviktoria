@@ -1,105 +1,109 @@
 import TelegramBot = require('node-telegram-bot-api');
 const { config } = require('./config');
 const {
-  startRegistrationFlow,
+  sendWelcomeMessage,
+  sendLegalDocuments,
+  sendNewsletterQuestion,
+  sendPhotoQuestion,
   finishRegistration,
-  editPolicyMessage,
-  sendConfirmationMessage,
 } = require('./services');
 const { Application } = require('./database');
 
 type UserStates = { [chatId: number]: any };
 
 function registerHandlers(bot: TelegramBot, userStates: UserStates) {
-  // --- ОБРАБОТЧИК КОМАНДЫ /start ---
   bot.onText(/\/start/, (msg) => {
-    startRegistrationFlow(bot, msg.chat.id, userStates);
+    const chatId = msg.chat.id;
+    delete userStates[chatId];
+    userStates[chatId] = {
+      step: 'start',
+      data: {},
+    };
+    sendWelcomeMessage(bot, msg.chat.id);
   });
 
-  // --- ОСНОВНОЙ ОБРАБОТЧИК СООБЩЕНИЙ ДЛЯ ЗАПОЛНЕНИЯ АНКЕТЫ ---
   bot.on('message', (msg) => {
-    // ... этот код остается без изменений ...
     const chatId = msg.chat.id;
     const state = userStates[chatId];
     if (!state || !state.step) return;
+
+    const text = msg.text || '';
+
     switch (state.step) {
-      case 'awaiting_first_name':
-        if (msg.text && msg.text.trim().length > 1) {
-          state.data.firstName = msg.text.trim();
-          state.step = 'awaiting_last_name';
-          bot.sendMessage(chatId, 'Отлично! Теперь введите вашу Фамилию:');
-        } else {
-          bot.sendMessage(chatId, 'Пожалуйста, введите корректное имя.');
-        }
+      // ИЗМЕНЕНИЕ: Запрашиваем сначала имя, потом фамилию
+      case 'awaiting_parent_firstname':
+        state.data.parentFirstName = text.trim();
+        state.step = 'awaiting_parent_lastname';
+        bot.sendMessage(chatId, 'Ваша Фамилия:');
         break;
-      case 'awaiting_last_name':
-        if (msg.text && msg.text.trim().length > 1) {
-          state.data.lastName = msg.text.trim();
-          state.step = 'awaiting_phone';
-          bot.sendMessage(
-            chatId,
-            'Спасибо! Теперь, пожалуйста, поделитесь вашим контактом.',
-            {
-              reply_markup: {
-                keyboard: [
-                  [{ text: '📱 Поделиться контактом', request_contact: true }],
-                ],
-                one_time_keyboard: true,
-                resize_keyboard: true,
-              },
-            }
-          );
-        } else {
-          bot.sendMessage(chatId, 'Пожалуйста, введите корректную фамилию.');
-        }
+      case 'awaiting_parent_lastname':
+        state.data.parentLastName = text.trim();
+        state.step = 'awaiting_parent_phone';
+        bot.sendMessage(
+          chatId,
+          'Ваш телефон (можно использовать кнопку ниже):',
+          {
+            reply_markup: {
+              keyboard: [
+                [{ text: '📱 Поделиться контактом', request_contact: true }],
+              ],
+              one_time_keyboard: true,
+              resize_keyboard: true,
+            },
+          }
+        );
         break;
-      case 'awaiting_phone':
+      case 'awaiting_parent_phone':
         if (msg.contact && msg.contact.phone_number) {
-          state.data.phone = msg.contact.phone_number;
-          state.step = 'awaiting_email';
-          bot.sendMessage(chatId, 'Спасибо! Теперь введите ваш Email.', {
-            reply_markup: { remove_keyboard: true },
-          });
+          state.data.parentPhone = msg.contact.phone_number;
         } else {
-          bot.sendMessage(
-            chatId,
-            'Пожалуйста, используйте кнопку "Поделиться контактом".'
-          );
+          state.data.parentPhone = text.trim();
         }
+        state.step = 'awaiting_parent_email';
+        bot.sendMessage(chatId, 'Ваш Email:', {
+          reply_markup: { remove_keyboard: true },
+        });
         break;
-      case 'awaiting_email':
-        if (msg.text && /\S+@\S+\.\S+/.test(msg.text)) {
-          state.data.email = msg.text;
-          state.step = 'awaiting_product';
-          bot.sendMessage(
-            chatId,
-            'Email принят. Теперь выберите продукт или тариф:',
-            {
-              reply_markup: {
-                inline_keyboard: [
-                  [
-                    {
-                      text: 'Тариф "Стандарт"',
-                      callback_data: 'product_standard',
-                    },
-                  ],
-                  [{ text: 'Тариф "Профи"', callback_data: 'product_pro' }],
-                  [{ text: 'Тариф "VIP"', callback_data: 'product_vip' }],
-                ],
-              },
-            }
-          );
-        } else {
-          bot.sendMessage(
-            chatId,
-            'Кажется, это не похоже на Email. Попробуйте еще раз.'
-          );
-        }
+      case 'awaiting_parent_email':
+        state.data.parentEmail = text.trim();
+        state.step = 'awaiting_child_firstname';
+        bot.sendMessage(chatId, 'Имя Вашего ребенка:');
+        break;
+      case 'awaiting_child_firstname':
+        state.data.childFirstName = text.trim();
+        state.step = 'awaiting_child_lastname';
+        bot.sendMessage(chatId, 'Фамилия Вашего ребенка:');
+        break;
+      case 'awaiting_child_lastname':
+        state.data.childLastName = text.trim();
+        state.step = 'awaiting_child_age';
+        bot.sendMessage(chatId, 'Возраст ребенка:');
+        break;
+      case 'awaiting_child_age':
+        state.data.childAge = text.trim();
+        state.step = 'awaiting_child_contact';
+        bot.sendMessage(chatId, 'Телефон или Никнейм ребенка в Telegram:');
+        break;
+      case 'awaiting_child_contact':
+        state.data.childContact = text.trim();
+        state.step = 'awaiting_gadget_opinion';
+        bot.sendMessage(
+          chatId,
+          'Считаете ли Вы, что ваш ребенок зависим от гаджетов?',
+          {
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: 'Да', callback_data: 'opinion_yes' }],
+                [{ text: 'Нет', callback_data: 'opinion_no' }],
+                [{ text: 'Затрудняюсь ответить', callback_data: 'opinion_dk' }],
+              ],
+            },
+          }
+        );
         break;
     }
   });
 
-  // --- ОБРАБОТЧИК НАЖАТИЙ НА INLINE-КНОПКИ ---
   bot.on('callback_query', async (query) => {
     if (!query.data || !query.message) {
       bot.answerCallbackQuery(query.id);
@@ -113,69 +117,38 @@ function registerHandlers(bot: TelegramBot, userStates: UserStates) {
       return;
     }
 
-    // Логика для первого шага (согласия)
-    if (query.data === 'toggle_pd_consent') {
-      state.policy.pdConsent = !state.policy.pdConsent;
-      bot.answerCallbackQuery(query.id);
-      editPolicyMessage(bot, chatId, messageId, userStates);
-      return;
-    }
-    if (query.data === 'toggle_policy_ack') {
-      state.policy.policyAck = !state.policy.policyAck;
-      bot.answerCallbackQuery(query.id);
-      editPolicyMessage(bot, chatId, messageId, userStates);
-      return;
-    }
-    if (query.data === 'continue_to_form') {
-      if (state && state.policy.pdConsent && state.policy.policyAck) {
-        state.data.newsletter = true;
-        state.data.photoConsent = true;
-        await bot.deleteMessage(chatId, messageId);
-        state.step = 'awaiting_first_name';
-        await bot.sendMessage(
-          chatId,
-          'Спасибо за согласие! Давайте начнем. Введите ваше Имя:'
-        );
-      } else {
-        bot.answerCallbackQuery(query.id, {
-          text: 'Пожалуйста, подтвердите оба пункта.',
-          show_alert: true,
-        });
-      }
-      return;
-    }
-
-    // Логика выбора продукта и перехода к подтверждению
-    if (query.data.startsWith('product_')) {
-      if (!state) return;
-      state.data.product = query.data.replace('product_', '');
+    if (query.data === 'start_flow') {
+      state.step = 'awaiting_legal_accept';
+      sendLegalDocuments(bot, chatId, messageId);
+    } else if (query.data === 'legal_accepted') {
+      state.step = 'awaiting_newsletter_choice';
+      sendNewsletterQuestion(bot, chatId, messageId);
+    } else if (
+      query.data === 'newsletter_yes' ||
+      query.data === 'newsletter_no'
+    ) {
+      state.data.newsletterConsent = query.data === 'newsletter_yes';
+      state.step = 'awaiting_photo_choice';
+      sendPhotoQuestion(bot, chatId, messageId);
+    } else if (query.data === 'photo_yes' || query.data === 'photo_no') {
+      state.data.photoConsent = query.data === 'photo_yes';
+      // ИЗМЕНЕНИЕ: Устанавливаем первый шаг анкеты и меняем текст
+      state.step = 'awaiting_parent_firstname';
       await bot.deleteMessage(chatId, messageId);
-      state.step = 'awaiting_confirmation';
-      sendConfirmationMessage(bot, chatId, userStates);
-      return;
-    }
-
-    // Новая логика для кнопок подтверждения
-    if (query.data === 'confirm_submission') {
-      if (!state) return;
-      await bot.editMessageText('✅ Спасибо! Ваша заявка отправляется...', {
-        chat_id: chatId,
-        message_id: messageId,
-      });
+      await bot.sendMessage(
+        chatId,
+        'Спасибо! Теперь заполним анкету.\n\nВаше Имя:'
+      );
+    } else if (query.data.startsWith('opinion_')) {
+      const opinions: { [key: string]: string } = {
+        opinion_yes: 'Да',
+        opinion_no: 'Нет',
+        opinion_dk: 'Затрудняюсь ответить',
+      };
+      state.data.gadgetOpinion = opinions[query.data];
+      await bot.deleteMessage(chatId, messageId);
       await finishRegistration(bot, chatId, userStates);
-      return;
-    }
-    if (query.data === 'start_over') {
-      await bot.editMessageText('Начинаем заново...', {
-        chat_id: chatId,
-        message_id: messageId,
-      });
-      startRegistrationFlow(bot, chatId, userStates);
-      return;
-    }
-
-    // Логика для админов с БД
-    if (query.data.startsWith('mark_paid_')) {
+    } else if (query.data.startsWith('mark_paid_')) {
       const parts = query.data.split('_');
       const applicationId = parts[2];
 
@@ -202,9 +175,7 @@ function registerHandlers(bot: TelegramBot, userStates: UserStates) {
             message_id: messageId,
           }
         );
-        bot.answerCallbackQuery(query.id, {
-          text: 'Статус заявки обновлен в БД!',
-        });
+
         bot.sendMessage(
           application.get('chatId') as number,
           '✅ Оплата получена. Вы добавлены в базу.'
@@ -216,9 +187,10 @@ function registerHandlers(bot: TelegramBot, userStates: UserStates) {
         });
       }
     }
+
+    bot.answerCallbackQuery(query.id);
   });
 
-  // --- ОБРАБОТЧИК КОМАНДЫ /broadcast ---
   bot.onText(/\/broadcast (.+)/, async (msg, match) => {
     const chatId = msg.chat.id;
     const text = match![1];

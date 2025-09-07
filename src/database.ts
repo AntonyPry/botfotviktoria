@@ -8,6 +8,7 @@ const sequelize = new Sequelize(
   {
     host: config.db.host,
     dialect: config.db.dialect,
+    logging: false,
   }
 );
 
@@ -18,13 +19,25 @@ Application.init(
     applicationId: { type: DataTypes.STRING, primaryKey: true },
     chatId: { type: DataTypes.BIGINT, allowNull: false },
     username: DataTypes.STRING,
-    firstName: DataTypes.STRING,
-    lastName: DataTypes.STRING,
-    phone: DataTypes.STRING,
-    email: DataTypes.STRING,
-    product: DataTypes.STRING,
+
+    // ИЗМЕНЕНИЕ: Разделили имя и фамилию родителя
+    parentFirstName: DataTypes.STRING,
+    parentLastName: DataTypes.STRING,
+    parentPhone: DataTypes.STRING,
+    parentEmail: DataTypes.STRING,
+
+    // Данные ребенка
+    childFirstName: DataTypes.STRING,
+    childLastName: DataTypes.STRING,
+    childAge: DataTypes.STRING,
+    childContact: DataTypes.STRING,
+
+    // Ответы
+    gadgetOpinion: DataTypes.STRING,
     newsletterConsent: DataTypes.BOOLEAN,
     photoConsent: DataTypes.BOOLEAN,
+
+    // Служебные поля
     status: {
       type: DataTypes.ENUM('pending_payment', 'paid'),
       defaultValue: 'pending_payment',
