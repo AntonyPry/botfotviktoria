@@ -65,9 +65,17 @@ function registerHandlers(bot: TelegramBot, userStates: UserStates) {
         });
         break;
       case 'awaiting_parent_email':
-        state.data.parentEmail = text.trim();
-        state.step = 'awaiting_child_firstname';
-        bot.sendMessage(chatId, 'Имя Вашего ребенка:');
+        const emailRegex = /\S+@\S+\.\S+/;
+        if (emailRegex.test(text.trim())) {
+          state.data.parentEmail = text.trim();
+          state.step = 'awaiting_child_firstname';
+          bot.sendMessage(chatId, 'Имя Вашего ребенка:');
+        } else {
+          bot.sendMessage(
+            chatId,
+            'Кажется, это не похоже на email. Пожалуйста, проверьте и введите адрес еще раз.'
+          );
+        }
         break;
       case 'awaiting_child_firstname':
         state.data.childFirstName = text.trim();
@@ -178,7 +186,7 @@ function registerHandlers(bot: TelegramBot, userStates: UserStates) {
 
         bot.sendMessage(
           application.get('chatId') as number,
-          '✅ Оплата получена. Вы добавлены в базу.'
+          '✅ Оплата получена. Вы добавлены в группу. Дополнительно перед тренингом направим напоминание в личных сообщениях и все потребности'
         );
       } else {
         bot.answerCallbackQuery(query.id, {
