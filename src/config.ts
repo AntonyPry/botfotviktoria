@@ -1,6 +1,7 @@
+const path = require('path');
 import dotenv = require('dotenv');
 
-dotenv.config();
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 const parseAdminIds = (ids?: string): number[] => {
   if (!ids) return [];
